@@ -1,0 +1,13 @@
+services:
+  db:
+    build: .
+    container_name: postgres-db
+    restart: unless-stopped
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bracelet_connecte}
+      POSTGRES_USER: ${POSTGRES_USER:-bracelet}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bracelet}
+    volumes:
+      - ./data:/var/lib/postgresql/data
