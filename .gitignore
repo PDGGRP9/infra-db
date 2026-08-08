@@ -45,3 +45,5 @@ terraform.rc
 
 data/
 .env
+
+.DS_Store
