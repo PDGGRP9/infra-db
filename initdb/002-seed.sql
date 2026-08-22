@@ -2,7 +2,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- ============================================================
 -- Seed users
--- Password demo used here: demo1234
+-- Password demo used here: Demo-1234
 -- ============================================================
 
 INSERT INTO users (
@@ -19,7 +19,7 @@ VALUES
     (
         'ryad@example.com',
         'ryad',
-        crypt('demo1234', gen_salt('bf')),
+        crypt('Demo-1234', gen_salt('bf')),
         'Ryad',
         'Bouzourene',
         TRUE,
@@ -29,7 +29,7 @@ VALUES
     (
         'alice@example.com',
         'alice',
-        crypt('demo1234', gen_salt('bf')),
+        crypt('Demo-1234', gen_salt('bf')),
         'Alice',
         'Martin',
         TRUE,
@@ -39,7 +39,7 @@ VALUES
     (
         'thomas@example.com',
         'thomas',
-        crypt('demo1234', gen_salt('bf')),
+        crypt('Demo-1234', gen_salt('bf')),
         'Thomas',
         'Durand',
         TRUE,
