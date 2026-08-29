@@ -102,9 +102,9 @@ VALUES
         'Bracelet Thomas',
         '0.9.8',
         'AA:BB:CC:DD:EE:03',
-        'inactive',
+        'active',
         NOW() - INTERVAL '30 days',
-        NOW() - INTERVAL '2 hours'
+        NOW()
     )
 ON CONFLICT (serial_number) DO UPDATE SET
     user_id = EXCLUDED.user_id,
@@ -168,7 +168,7 @@ SELECT
     captured_at,
     (68 + random() * 28)::INTEGER,
     ROUND((95 + random() * 4)::NUMERIC, 2),
-    (rn * 35 + random() * 80)::INTEGER,
+    FLOOR(EXTRACT(EPOCH FROM ((captured_at AT TIME ZONE 'Europe/Zurich') - date_trunc('day', captured_at AT TIME ZONE 'Europe/Zurich'))) / 86400.0 * 10000)::INTEGER,
     ROUND((random() * 10)::NUMERIC, 3),
     (78 + random() * 20)::INTEGER,
     jsonb_build_object(
@@ -217,7 +217,7 @@ SELECT
     captured_at,
     (62 + random() * 32)::INTEGER,
     ROUND((94 + random() * 5)::NUMERIC, 2),
-    (rn * 120 + random() * 250)::INTEGER,
+    FLOOR(EXTRACT(EPOCH FROM ((captured_at AT TIME ZONE 'Europe/Zurich') - date_trunc('day', captured_at AT TIME ZONE 'Europe/Zurich'))) / 86400.0 * 7000)::INTEGER,
     ROUND((random() * 8)::NUMERIC, 3),
     (70 + random() * 25)::INTEGER,
     jsonb_build_object(
@@ -232,22 +232,37 @@ FROM numbered;
 
 -- ============================================================
 -- Measurements for Thomas
--- Last 30 days, one point every 6 hours
+-- Last 7 days, at two densities:
+--   - last 24h: one point every 30 seconds (~2900 rows) — dense
+--     enough that the dashboard's 5-minute bucket-averaging always
+--     has plenty of raw samples per bucket, Garmin-style.
+--   - day -2 through day -7: one point every 5 minutes — coarser,
+--     but still well below the 7-day view's 20-minute bucket size.
+-- Several deliberate holes are carved out so the dashboard's
+-- "no data -> gap in the curve" rendering has something to show:
+--   - a ~2h dropout earlier today (bracelet taken off)
+--   - a nightly gap (00:00-06:00) every day before today
+--   - one whole day skipped entirely (4 days ago)
+--
+-- step_count resets at each local midnight (like a real pedometer's
+-- daily count) instead of growing forever: it's derived from how far
+-- into its calendar day each sample falls, not from a running row
+-- counter.
 -- ============================================================
 
+-- Last 24 hours: one point every 30 seconds, minus a 2h dropout.
 WITH series AS (
     SELECT
         generate_series(
-            NOW() - INTERVAL '30 days',
+            NOW() - INTERVAL '24 hours',
             NOW(),
-            INTERVAL '6 hours'
+            INTERVAL '30 seconds'
         ) AS captured_at
 ),
-numbered AS (
-    SELECT
-        captured_at,
-        ROW_NUMBER() OVER (ORDER BY captured_at) AS rn
+filtered AS (
+    SELECT captured_at
     FROM series
+    WHERE captured_at NOT BETWEEN NOW() - INTERVAL '10 hours' AND NOW() - INTERVAL '8 hours'
 )
 INSERT INTO biometrics_measurements (
     bracelet_id,
@@ -266,21 +281,65 @@ SELECT
     captured_at,
     (58 + random() * 36)::INTEGER,
     ROUND((93 + random() * 6)::NUMERIC, 2),
-    (rn * 300 + random() * 600)::INTEGER,
+    FLOOR(EXTRACT(EPOCH FROM ((captured_at AT TIME ZONE 'Europe/Zurich') - date_trunc('day', captured_at AT TIME ZONE 'Europe/Zurich'))) / 86400.0 * 9000)::INTEGER,
     ROUND((random() * 6)::NUMERIC, 3),
     (60 + random() * 30)::INTEGER,
     jsonb_build_object(
         'device_uid', '33333333-3333-3333-3333-333333333333',
         'serial_number', 'FAKE-BRACELET-003',
         'source', 'seed',
-        'profile', 'thomas_30d',
-        'heart_rate_bpm', (58 + random() * 36)::INTEGER,
-        'spo2_percent', ROUND((93 + random() * 6)::NUMERIC, 2),
-        'step_count', (rn * 300 + random() * 600)::INTEGER
+        'profile', 'thomas_7d_today'
+    ),
+    'seed/bracelet/thomas',
+    captured_at + INTERVAL '2 seconds'
+FROM filtered;
+
+-- Day -2 through day -7: one point every 5 minutes, minus
+-- nighttime hours (00:00-05:59, bracelet off overnight) and one
+-- day skipped entirely (4 days ago) to also test a full-day gap.
+WITH series AS (
+    SELECT
+        generate_series(
+            NOW() - INTERVAL '7 days',
+            NOW() - INTERVAL '1 day',
+            INTERVAL '5 minutes'
+        ) AS captured_at
+),
+filtered AS (
+    SELECT captured_at
+    FROM series
+    WHERE EXTRACT(HOUR FROM captured_at AT TIME ZONE 'Europe/Zurich') NOT BETWEEN 0 AND 5
+      AND date_trunc('day', captured_at AT TIME ZONE 'Europe/Zurich') <> date_trunc('day', (NOW() - INTERVAL '4 days') AT TIME ZONE 'Europe/Zurich')
+)
+INSERT INTO biometrics_measurements (
+    bracelet_id,
+    captured_at,
+    heart_rate_bpm,
+    spo2_percent,
+    step_count,
+    motion_level,
+    signal_quality,
+    raw_payload,
+    source_topic,
+    received_at
+)
+SELECT
+    (SELECT id FROM bracelets WHERE serial_number = 'FAKE-BRACELET-003'),
+    captured_at,
+    (58 + random() * 36)::INTEGER,
+    ROUND((93 + random() * 6)::NUMERIC, 2),
+    FLOOR(EXTRACT(EPOCH FROM ((captured_at AT TIME ZONE 'Europe/Zurich') - date_trunc('day', captured_at AT TIME ZONE 'Europe/Zurich'))) / 86400.0 * 9000)::INTEGER,
+    ROUND((random() * 6)::NUMERIC, 3),
+    (60 + random() * 30)::INTEGER,
+    jsonb_build_object(
+        'device_uid', '33333333-3333-3333-3333-333333333333',
+        'serial_number', 'FAKE-BRACELET-003',
+        'source', 'seed',
+        'profile', 'thomas_7d_history'
     ),
     'seed/bracelet/thomas',
     captured_at + INTERVAL '5 seconds'
-FROM numbered;
+FROM filtered;
 
 -- ============================================================
 -- Quick verification
