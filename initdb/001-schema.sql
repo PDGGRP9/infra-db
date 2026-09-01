@@ -14,24 +14,20 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS bracelets (
-    id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT UNIQUE REFERENCES users(id) ON DELETE SET NULL,
-    device_uid UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
-    serial_number TEXT NOT NULL UNIQUE,
-    display_name TEXT NOT NULL,
-    firmware_version TEXT,
-    mac_address TEXT,
-    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'lost', 'retired')),
-    paired_at TIMESTAMPTZ,
-    last_seen_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
+-- No more "bracelets" table, and no pairing/appairage step: a measurement
+-- belongs directly to the authenticated user who posted it. The BLE link only
+-- ever talks to one bracelet at a time, so device_uid/serial_number/mac_address
+-- are kept as plain descriptive columns on the measurement itself (which device
+-- produced it), not as a foreign key to a device registry. A user can post
+-- measurements from as many different physical bracelets as they want, one
+-- session at a time — there is nothing left to "pair" or "unpair".
 CREATE TABLE IF NOT EXISTS biometrics_measurements (
     id BIGSERIAL PRIMARY KEY,
-    bracelet_id BIGINT NOT NULL REFERENCES bracelets(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    device_uid TEXT,
+    serial_number TEXT,
+    display_name TEXT,
+    mac_address TEXT,
     captured_at TIMESTAMPTZ NOT NULL,
     heart_rate_bpm INTEGER CHECK (heart_rate_bpm IS NULL OR heart_rate_bpm BETWEEN 0 AND 250),
     spo2_percent NUMERIC(5, 2) CHECK (spo2_percent IS NULL OR spo2_percent BETWEEN 0 AND 100),
@@ -44,6 +40,5 @@ CREATE TABLE IF NOT EXISTS biometrics_measurements (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_bracelets_user_id ON bracelets(user_id);
-CREATE INDEX IF NOT EXISTS idx_biometrics_measurements_bracelet_captured_at ON biometrics_measurements(bracelet_id, captured_at DESC);
+CREATE INDEX IF NOT EXISTS idx_biometrics_measurements_user_captured_at ON biometrics_measurements(user_id, captured_at DESC);
 CREATE INDEX IF NOT EXISTS idx_biometrics_measurements_captured_at ON biometrics_measurements(captured_at DESC);
