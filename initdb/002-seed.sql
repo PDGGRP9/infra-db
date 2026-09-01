@@ -57,80 +57,12 @@ ON CONFLICT (email) DO UPDATE SET
     updated_at = NOW();
 
 -- ============================================================
--- Seed bracelets
--- One bracelet per user because user_id is UNIQUE
--- ============================================================
-
-INSERT INTO bracelets (
-    user_id,
-    device_uid,
-    serial_number,
-    display_name,
-    firmware_version,
-    mac_address,
-    status,
-    paired_at,
-    last_seen_at
-)
-VALUES
-    (
-        (SELECT id FROM users WHERE email = 'ryad@example.com'),
-        '11111111-1111-1111-1111-111111111111',
-        'FAKE-BRACELET-001',
-        'Bracelet de test Ryad',
-        '1.0.3',
-        'AA:BB:CC:DD:EE:01',
-        'active',
-        NOW() - INTERVAL '7 days',
-        NOW()
-    ),
-    (
-        (SELECT id FROM users WHERE email = 'alice@example.com'),
-        '22222222-2222-2222-2222-222222222222',
-        'FAKE-BRACELET-002',
-        'Bracelet Alice',
-        '1.0.2',
-        'AA:BB:CC:DD:EE:02',
-        'active',
-        NOW() - INTERVAL '14 days',
-        NOW() - INTERVAL '5 minutes'
-    ),
-    (
-        (SELECT id FROM users WHERE email = 'thomas@example.com'),
-        '33333333-3333-3333-3333-333333333333',
-        'FAKE-BRACELET-003',
-        'Bracelet Thomas',
-        '0.9.8',
-        'AA:BB:CC:DD:EE:03',
-        'inactive',
-        NOW() - INTERVAL '30 days',
-        NOW() - INTERVAL '2 hours'
-    )
-ON CONFLICT (serial_number) DO UPDATE SET
-    user_id = EXCLUDED.user_id,
-    device_uid = EXCLUDED.device_uid,
-    display_name = EXCLUDED.display_name,
-    firmware_version = EXCLUDED.firmware_version,
-    mac_address = EXCLUDED.mac_address,
-    status = EXCLUDED.status,
-    paired_at = EXCLUDED.paired_at,
-    last_seen_at = EXCLUDED.last_seen_at,
-    updated_at = NOW();
-
--- ============================================================
 -- Optional cleanup of previous seed measurements
 -- Useful if you manually rerun this script
 -- ============================================================
 
-DELETE FROM biometrics_measurements bm
-USING bracelets b
-WHERE bm.bracelet_id = b.id
-  AND b.serial_number IN (
-      'FAKE-BRACELET-001',
-      'FAKE-BRACELET-002',
-      'FAKE-BRACELET-003'
-  )
-  AND bm.source_topic LIKE 'seed/%';
+DELETE FROM biometrics_measurements
+WHERE source_topic LIKE 'seed/%';
 
 -- ============================================================
 -- Measurements for Ryad
@@ -152,7 +84,11 @@ numbered AS (
     FROM series
 )
 INSERT INTO biometrics_measurements (
-    bracelet_id,
+    user_id,
+    device_uid,
+    serial_number,
+    display_name,
+    mac_address,
     captured_at,
     heart_rate_bpm,
     spo2_percent,
@@ -164,7 +100,11 @@ INSERT INTO biometrics_measurements (
     received_at
 )
 SELECT
-    (SELECT id FROM bracelets WHERE serial_number = 'FAKE-BRACELET-001'),
+    (SELECT id FROM users WHERE email = 'ryad@example.com'),
+    '11111111-1111-1111-1111-111111111111',
+    'FAKE-BRACELET-001',
+    'Bracelet de test Ryad',
+    'AA:BB:CC:DD:EE:01',
     captured_at,
     (68 + random() * 28)::INTEGER,
     ROUND((95 + random() * 4)::NUMERIC, 2),
@@ -201,7 +141,11 @@ numbered AS (
     FROM series
 )
 INSERT INTO biometrics_measurements (
-    bracelet_id,
+    user_id,
+    device_uid,
+    serial_number,
+    display_name,
+    mac_address,
     captured_at,
     heart_rate_bpm,
     spo2_percent,
@@ -213,7 +157,11 @@ INSERT INTO biometrics_measurements (
     received_at
 )
 SELECT
-    (SELECT id FROM bracelets WHERE serial_number = 'FAKE-BRACELET-002'),
+    (SELECT id FROM users WHERE email = 'alice@example.com'),
+    '22222222-2222-2222-2222-222222222222',
+    'FAKE-BRACELET-002',
+    'Bracelet Alice',
+    'AA:BB:CC:DD:EE:02',
     captured_at,
     (62 + random() * 32)::INTEGER,
     ROUND((94 + random() * 5)::NUMERIC, 2),
@@ -250,7 +198,11 @@ numbered AS (
     FROM series
 )
 INSERT INTO biometrics_measurements (
-    bracelet_id,
+    user_id,
+    device_uid,
+    serial_number,
+    display_name,
+    mac_address,
     captured_at,
     heart_rate_bpm,
     spo2_percent,
@@ -262,7 +214,11 @@ INSERT INTO biometrics_measurements (
     received_at
 )
 SELECT
-    (SELECT id FROM bracelets WHERE serial_number = 'FAKE-BRACELET-003'),
+    (SELECT id FROM users WHERE email = 'thomas@example.com'),
+    '33333333-3333-3333-3333-333333333333',
+    'FAKE-BRACELET-003',
+    'Bracelet Thomas',
+    'AA:BB:CC:DD:EE:03',
     captured_at,
     (58 + random() * 36)::INTEGER,
     ROUND((93 + random() * 6)::NUMERIC, 2),
@@ -288,8 +244,6 @@ FROM numbered;
 
 SELECT 'users' AS table_name, COUNT(*) AS count FROM users
 UNION ALL
-SELECT 'bracelets' AS table_name, COUNT(*) AS count FROM bracelets
-UNION ALL
 SELECT 'biometrics_measurements' AS table_name, COUNT(*) AS count FROM biometrics_measurements;
 
 -- ============================================================
@@ -300,20 +254,10 @@ SELECT
     u.id AS user_id,
     u.email,
     u.username,
-    b.serial_number,
-    b.display_name,
-    b.status,
     COUNT(m.id) AS measurements_count,
     MIN(m.captured_at) AS first_measurement,
     MAX(m.captured_at) AS last_measurement
 FROM users u
-LEFT JOIN bracelets b ON b.user_id = u.id
-LEFT JOIN biometrics_measurements m ON m.bracelet_id = b.id
-GROUP BY
-    u.id,
-    u.email,
-    u.username,
-    b.serial_number,
-    b.display_name,
-    b.status
+LEFT JOIN biometrics_measurements m ON m.user_id = u.id
+GROUP BY u.id, u.email, u.username
 ORDER BY u.id;
